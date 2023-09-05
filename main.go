@@ -49,7 +49,7 @@ func main() {
 	for i := 0; i < len(validURLs); i++ {
 		err := <-errors
 		if err != nil {
-			fmt.Printf("Error downloading file: %s\n", err)
+			fmt.Println(err)
 		}
 	}
 }
