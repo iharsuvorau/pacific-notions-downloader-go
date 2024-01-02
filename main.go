@@ -11,20 +11,37 @@ import (
 	"time"
 )
 
-var outputDir = flag.String("o", "./", "Output directory for the podcasts")
+var (
+	outputDir        = flag.String("o", "./", "Output directory for the podcasts")
+	usePreviousMonth = flag.Bool("previous-month", false, "Use the previous month instead of the current one")
+	debug            = flag.Bool("debug", false, "Debug mode")
+)
 
 func main() {
 	flag.Parse()
 
 	// 1. Get the current month
 	month := getCurrentMonth()
+	year := time.Now().Year()
+	//    or the previous one
+	if *usePreviousMonth {
+		month = getCurrentMonth() - 1
+		if month == 0 {
+			month = 12
+			year = year - 1
+		}
+	}
+	debugPrintf("Month: %d, year: %d\n", month, year)
 
 	// 2. Get the list of podcasts for this month
 	//    a. Get sundays
 	//    b. Try to pick the correct URL for each sunday
-	sundays := getSundaysForMonth(month)
-	sundays = filterSundaysUntilToday(sundays)
+	sundays := getSundaysForMonthAndYear(month, year)
+	if !*usePreviousMonth {
+		sundays = filterSundaysUntilToday(sundays)
+	}
 	formattedSundays := formatDays(sundays)
+	debugPrintf("Sundays: %v\n", formattedSundays)
 	validURLs := []string{}
 	for _, sunday := range formattedSundays {
 		url := tryFindURLForDateMysteriosNumber(sunday, 9)
@@ -32,9 +49,11 @@ func main() {
 			validURLs = append(validURLs, url)
 		}
 	}
+	debugPrintf("Valid URLs: %v\n", validURLs)
 
 	// 3. Download the podcasts that are missing
 	validURLs = filterMissingDownloads(*outputDir, validURLs)
+	debugPrintf("Missing URLs: %v\n", validURLs)
 
 	if len(validURLs) == 0 {
 		fmt.Println("No missing podcasts")
@@ -58,11 +77,10 @@ func getCurrentMonth() time.Month {
 	return time.Now().Month()
 }
 
-func getSundaysForMonth(month time.Month) []time.Time {
-	day := time.Date(time.Now().Year(), month, 1, 0, 0, 0, 0, time.UTC)
+func getSundaysForMonthAndYear(month time.Month, year int) []time.Time {
+	day := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
 	lastDay := day.AddDate(0, 1, -1)
 	sundays := []time.Time{}
-
 	for {
 		if day.Weekday() == time.Sunday {
 			sundays = append(sundays, day)
@@ -72,7 +90,6 @@ func getSundaysForMonth(month time.Month) []time.Time {
 		}
 		day = day.AddDate(0, 0, 1)
 	}
-
 	return sundays
 }
 
@@ -89,10 +106,6 @@ func filterSundaysUntilToday(sundays []time.Time) []time.Time {
 	return filtered
 }
 
-func formatSunday(sunday time.Time) string {
-	return sunday.Format("20060102")
-}
-
 func formatDays(days []time.Time) []string {
 	formatted := []string{}
 
@@ -101,6 +114,10 @@ func formatDays(days []time.Time) []string {
 	}
 
 	return formatted
+}
+
+func formatSunday(sunday time.Time) string {
+	return sunday.Format("20060102")
 }
 
 func makeURLForDate(date string, mysteriousNumber int) string {
@@ -163,4 +180,16 @@ func filterMissingDownloads(outputDir string, urls []string) []string {
 	}
 
 	return missing
+}
+
+func debugPrintln(a ...interface{}) {
+	if *debug {
+		fmt.Println(a...)
+	}
+}
+
+func debugPrintf(format string, a ...interface{}) {
+	if *debug {
+		fmt.Printf(format, a...)
+	}
 }
