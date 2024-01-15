@@ -44,7 +44,7 @@ func main() {
 	debugPrintf("Sundays: %v\n", formattedSundays)
 	validURLs := []string{}
 	for _, sunday := range formattedSundays {
-		url := tryFindURLForDateMysteriosNumber(sunday, 9)
+		url := tryFindURLForDateMysteriosNumber(sunday, 12)
 		if url != "" {
 			validURLs = append(validURLs, url)
 		}
@@ -121,7 +121,7 @@ func formatSunday(sunday time.Time) string {
 }
 
 func makeURLForDate(date string, mysteriousNumber int) string {
-	return fmt.Sprintf("https://kexp-archive.streamguys1.com/content/kexp/%s06000%d-33-515-pacific-notions.mp3", date, mysteriousNumber)
+	return fmt.Sprintf("https://kexp-archive.streamguys1.com/content/kexp/%s0600%02d-33-515-pacific-notions.mp3", date, mysteriousNumber)
 }
 
 func tryFindURLForDateMysteriosNumber(date string, mysteriousNumber int) string {
@@ -130,6 +130,7 @@ func tryFindURLForDateMysteriosNumber(date string, mysteriousNumber int) string 
 	}
 
 	urlCandidate := makeURLForDate(date, mysteriousNumber)
+	debugPrintf("Trying %s\n", urlCandidate)
 	resp, err := http.Head(urlCandidate)
 
 	if err == nil && resp.StatusCode == 200 {
