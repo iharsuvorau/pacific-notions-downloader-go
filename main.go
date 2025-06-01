@@ -139,7 +139,7 @@ func formatSunday(sunday time.Time) string {
 }
 
 func makeURLForDate(date string, mysteriousNumber int) string {
-	return fmt.Sprintf("https://kexp-archive.streamguys1.com/content/kexp/%s0600%02d-33-515-pacific-notions.mp3", date, mysteriousNumber)
+	return fmt.Sprintf("https://kexp-archive.streamguys1.com/content/kexp/%s0550%02d-33-1962-pacific-notions.mp3", date, mysteriousNumber)
 }
 
 func tryFindURLForDateMysteriosNumber(date string, mysteriousNumber int) string {
