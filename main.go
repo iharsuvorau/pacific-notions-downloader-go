@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path"
@@ -14,30 +15,23 @@ import (
 var (
 	outputDir        = flag.String("o", "./", "Output directory for the podcasts")
 	usePreviousMonth = flag.Bool("previous-month", false, "Use the previous month instead of the current one")
+	previousMonths   = flag.Uint("p", 0, "Number of previous months to go back")
 	debug            = flag.Bool("debug", false, "Debug mode")
 )
 
 func main() {
 	flag.Parse()
 
-	// 1. Get the current month
-	month := getCurrentMonth()
-	year := time.Now().Year()
-	//    or the previous one
-	if *usePreviousMonth {
-		month = getCurrentMonth() - 1
-		if month == 0 {
-			month = 12
-			year = year - 1
-		}
-	}
+	month, year := currentMonthAndYear()
+
+	month, year = adjustForPast(month, year)
 	debugPrintf("Month: %d, year: %d\n", month, year)
 
 	// 2. Get the list of podcasts for this month
 	//    a. Get sundays
 	//    b. Try to pick the correct URL for each sunday
-	sundays := getSundaysForMonthAndYear(month, year)
-	if !*usePreviousMonth {
+	sundays := findSundays(month, year)
+	if !*usePreviousMonth && *previousMonths == 0 {
 		sundays = filterSundaysUntilToday(sundays)
 	}
 	formattedSundays := formatDays(sundays)
@@ -73,11 +67,35 @@ func main() {
 	}
 }
 
-func getCurrentMonth() time.Month {
-	return time.Now().Month()
+func currentMonthAndYear() (time.Month, int) {
+	t := time.Now()
+	return t.Month(), t.Year()
 }
 
-func getSundaysForMonthAndYear(month time.Month, year int) []time.Time {
+func adjustForPast(curMonth time.Month, curYear int) (time.Month, int) {
+	if !*usePreviousMonth && *previousMonths == 0 {
+		return curMonth, curYear
+	}
+
+	monthsDelta := 0
+
+	if *usePreviousMonth {
+		monthsDelta = 1
+	} else if *previousMonths != 0 {
+		monthsDelta = int(math.Abs(float64(*previousMonths)))
+	}
+
+	curMonth -= time.Month(monthsDelta)
+	if curMonth <= 0 {
+		curMonth = 12
+		curYear -= 1
+	}
+
+	return curMonth, curYear
+
+}
+
+func findSundays(month time.Month, year int) []time.Time {
 	day := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
 	lastDay := day.AddDate(0, 1, -1)
 	sundays := []time.Time{}
@@ -183,13 +201,13 @@ func filterMissingDownloads(outputDir string, urls []string) []string {
 	return missing
 }
 
-func debugPrintln(a ...interface{}) {
+func debugPrintln(a ...any) {
 	if *debug {
 		fmt.Println(a...)
 	}
 }
 
-func debugPrintf(format string, a ...interface{}) {
+func debugPrintf(format string, a ...any) {
 	if *debug {
 		fmt.Printf(format, a...)
 	}
