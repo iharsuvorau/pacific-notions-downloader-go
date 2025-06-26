@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"sync"
 	"time"
 )
 
@@ -22,8 +23,8 @@ var (
 func main() {
 	flag.Parse()
 
+	// 1. Figure out which month and year to process
 	month, year := currentMonthAndYear()
-
 	month, year = adjustForPast(month, year)
 	debugPrintf("Month: %d, year: %d\n", month, year)
 
@@ -36,35 +37,47 @@ func main() {
 	}
 	formattedSundays := formatDays(sundays)
 	debugPrintf("Sundays: %v\n", formattedSundays)
-	validURLs := []string{}
-	for _, sunday := range formattedSundays {
-		url := tryFindURLForDateMysteriosNumber(sunday, 12)
-		if url != "" {
-			validURLs = append(validURLs, url)
-		}
-	}
-	debugPrintf("Valid URLs: %v\n", validURLs)
 
-	// 3. Download the podcasts that are missing
-	validURLs = filterMissingDownloads(*outputDir, validURLs)
-	debugPrintf("Missing URLs: %v\n", validURLs)
+	var wg sync.WaitGroup
+	validURLs := make(chan string)
+	for _, v := range formattedSundays {
+		wg.Add(1)
+		go func(sunday string) {
+			defer wg.Done()
+
+			// find valid URL, does some magic, error-prone, requires constant updating
+			link := tryFindURLForDateMysteriosNumber(sunday, 12)
+			if len(link) > 0 {
+				debugPrintf("Valid URL: %v\n", link)
+			}
+
+			// filter missing downloads based on files in outputDir
+			if link != "" && isDownloadMissing(*outputDir, link) {
+				validURLs <- link
+				debugPrintf("Missing URL: %v\n", link)
+			}
+		}(v)
+	}
+	wg.Wait()
+	close(validURLs)
 
 	if len(validURLs) == 0 {
 		fmt.Println("No missing podcasts")
 		return
 	}
 
-	errors := make(chan error, len(validURLs))
-	for _, url := range validURLs {
-		go downloadFile(url, *outputDir, errors)
+	// 3. Download the podcasts that are missing
+	for link := range validURLs {
+		wg.Add(1)
+		go func(u string) {
+			defer wg.Done()
+			err := downloadFile(u, *outputDir)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}(link)
 	}
-
-	for i := 0; i < len(validURLs); i++ {
-		err := <-errors
-		if err != nil {
-			fmt.Println(err)
-		}
-	}
+	wg.Wait()
 }
 
 func currentMonthAndYear() (time.Month, int) {
@@ -158,16 +171,14 @@ func tryFindURLForDateMysteriosNumber(date string, mysteriousNumber int) string 
 	return tryFindURLForDateMysteriosNumber(date, mysteriousNumber-1)
 }
 
-func downloadFile(url string, outputDir string, ch chan<- error) {
+func downloadFile(url string, outputDir string) error {
 	errMsgFormat := "failed downloading %s: %s"
 
 	fmt.Printf("Downloading %s\n", url)
 
 	resp, err := http.Get(url)
 	if err != nil {
-		err = fmt.Errorf(errMsgFormat, url, err)
-		ch <- err
-		return
+		return fmt.Errorf(errMsgFormat, url, err)
 	}
 	defer resp.Body.Close()
 
@@ -175,17 +186,14 @@ func downloadFile(url string, outputDir string, ch chan<- error) {
 
 	out, err := os.Create(outputPath)
 	if err != nil {
-		err = fmt.Errorf(errMsgFormat, url, err)
-		ch <- err
-		return
+		return fmt.Errorf(errMsgFormat, url, err)
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		err = fmt.Errorf(errMsgFormat, url, err)
+	if _, err = io.Copy(out, resp.Body); err != nil {
+		return fmt.Errorf(errMsgFormat, url, err)
 	}
-	ch <- err
+	return nil
 }
 
 func filterMissingDownloads(outputDir string, urls []string) []string {
@@ -199,6 +207,12 @@ func filterMissingDownloads(outputDir string, urls []string) []string {
 	}
 
 	return missing
+}
+
+func isDownloadMissing(outputDir, link string) bool {
+	outputPath := path.Join(outputDir, path.Base(link))
+	_, err := os.Stat(outputPath)
+	return os.IsNotExist(err) == true
 }
 
 func debugPrintln(a ...any) {
