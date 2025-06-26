@@ -116,7 +116,7 @@ func findSundays(month time.Month, year int) []time.Time {
 		if day.Weekday() == time.Sunday {
 			sundays = append(sundays, day)
 		}
-		if day == lastDay {
+		if day.Equal(lastDay) {
 			break
 		}
 		day = day.AddDate(0, 0, 1)
@@ -194,19 +194,6 @@ func downloadFile(url string, outputDir string) error {
 		return fmt.Errorf(errMsgFormat, url, err)
 	}
 	return nil
-}
-
-func filterMissingDownloads(outputDir string, urls []string) []string {
-	missing := []string{}
-
-	for _, url := range urls {
-		outputPath := path.Join(outputDir, path.Base(url))
-		if _, err := os.Stat(outputPath); os.IsNotExist(err) {
-			missing = append(missing, url)
-		}
-	}
-
-	return missing
 }
 
 func isDownloadMissing(outputDir, link string) bool {
